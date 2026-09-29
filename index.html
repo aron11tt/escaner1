@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Caja</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f3f1ec;--ink:#1c2230;--mut:#6b7280;--card:#fff;--line:#dcd8cf;--ok:#1f7a4d;--bad:#b3261e;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151c;--ink:#eceae4;--mut:#9aa0ab;--card:#1c212b;--line:#2e3542;--ok:#5fd39a;--bad:#ff8a80}}
+:root[data-theme="dark"]{--bg:#12151c;--ink:#eceae4;--mut:#9aa0ab;--card:#1c212b;--line:#2e3542;--ok:#5fd39a;--bad:#ff8a80}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Archivo,system-ui,sans-serif;max-width:520px;margin:0 auto;padding:12px 14px 120px}
+nav{display:flex;gap:6px;margin-bottom:12px}
+nav button{flex:1;padding:11px;border:1px solid var(--line);background:none;color:var(--ink);font:600 15px inherit;font-family:inherit;border-radius:10px}
+nav button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+input{width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:16px inherit;font-family:inherit;margin-bottom:8px}
+.btn{width:100%;padding:13px;border:0;border-radius:10px;background:var(--ok);color:#fff;font:800 16px inherit;font-family:inherit}
+.btn.alt{background:var(--ink);color:var(--bg)}
+.row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px dashed var(--line)}
+.row:last-child{border:0}.row .n{flex:1;min-width:0}.row .n b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row small{color:var(--mut)}
+.q{display:flex;align-items:center;gap:6px}
+.q button{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:none;color:var(--ink);font-size:18px}
+.x{border:0;background:none;color:var(--bad);font-size:20px}
+video{width:100%;border-radius:10px;background:#000;max-height:240px;object-fit:cover}
+.tot{position:fixed;left:0;right:0;bottom:0;background:var(--ink);color:var(--bg);padding:14px 18px calc(14px + env(safe-area-inset-bottom,0px));display:flex;justify-content:space-between;align-items:center;max-width:520px;margin:0 auto}
+.tot b{font-size:30px;font-weight:800}
+.msg{font-size:14px;color:var(--mut);margin:6px 0}.msg.bad{color:var(--bad)}
+.empty{color:var(--mut);text-align:center;padding:18px 0}
+[hidden]{display:none!important}
+</style></head><body>
+<nav><button id="t1" class="on">Cobrar</button><button id="t2">Productos</button></nav>
+
+<section id="v1">
+  <div class="box">
+    <button class="btn alt" id="scanBtn">Abrir cámara y escanear</button>
+    <div id="cam" hidden style="margin-top:10px"><video id="vid" playsinline muted></video></div>
+    <div class="msg" id="scanMsg"></div>
+    <input id="manual" inputmode="numeric" placeholder="O escribí el código y tocá Enter">
+  </div>
+  <div class="box" id="cart"></div>
+  <button class="btn" id="clear" style="background:none;color:var(--bad);border:1px solid var(--line)">Nueva venta</button>
+</section>
+
+<section id="v2" hidden>
+  <div class="box">
+    <input id="pc" inputmode="numeric" placeholder="Código de barras">
+    <input id="pn" placeholder="Nombre del producto">
+    <input id="pp" inputmode="decimal" placeholder="Precio">
+    <button class="btn" id="save">Guardar producto</button>
+    <button class="btn alt" id="scanCode" style="margin-top:8px">Escanear código con la cámara</button>
+    <div id="cam2" hidden style="margin-top:10px"><video id="vid2" playsinline muted></video></div>
+  </div>
+  <div class="box" id="plist"></div>
+</section>
+
+<div class="tot"><span>Total</span><b id="total">$0</b></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let prods={},cart={};
+try{prods=JSON.parse(localStorage.getItem('prods')||'{}')}catch(e){}
+const persist=()=>{try{localStorage.setItem('prods',JSON.stringify(prods))}catch(e){}};
+const money=n=>'$'+(Math.round(n*100)/100).toLocaleString('es-AR');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function tab(n){$('v1').hidden=n!=1;$('v2').hidden=n!=2;$('t1').classList.toggle('on',n==1);$('t2').classList.toggle('on',n==2);stop();if(n==2)drawP()}
+$('t1').onclick=()=>tab(1);$('t2').onclick=()=>tab(2);
+
+function drawCart(){
+  const ids=Object.keys(cart);let t=0;
+  $('cart').innerHTML=ids.length?ids.map(c=>{const p=prods[c],q=cart[c];t+=p.price*q;
+    return `<div class="row"><div class="n"><b>${esc(p.name)}</b><small>${money(p.price)} c/u</small></div>
+    <div class="q"><button data-m="${c}">−</button><span>${q}</span><button data-p="${c}">+</button></div>
+    <b style="min-width:70px;text-align:right">${money(p.price*q)}</b></div>`}).join(''):'<div class="empty">Escaneá un producto para empezar.</div>';
+  $('total').textContent=money(t);
+}
+$('cart').onclick=e=>{const m=e.target.dataset.m,p=e.target.dataset.p;
+  if(m){cart[m]--;if(cart[m]<=1&&cart[m]<1)delete cart[m]}
+  if(p)cart[p]++;drawCart()};
+$('clear').onclick=()=>{cart={};drawCart()};
+
+function add(code){
+  code=String(code).trim();if(!code)return;
+  if(!prods[code]){$('scanMsg').className='msg bad';$('scanMsg').textContent='Código '+code+' no cargado. Agregalo en Productos.';$('pc').value=code;return}
+  cart[code]=(cart[code]||0)+1;$('scanMsg').className='msg';$('scanMsg').textContent='Sumado: '+prods[code].name;
+  try{navigator.vibrate&&navigator.vibrate(60)}catch(e){}drawCart();
+}
+$('manual').onkeydown=e=>{if(e.key==='Enter'){add($('manual').value);$('manual').value=''}};
+
+// escáner
+let stream=null,timer=null,reader=null,last='',lastT=0,handler=null,box=null;
+function onCode(c){const n=Date.now();if(c===last&&n-lastT<1800)return;last=c;lastT=n;handler(c)}
+async function start(video,boxEl,cb,msgEl){
+  stop();handler=cb;box=boxEl;boxEl.hidden=false;
+  const cons={video:{facingMode:{ideal:'environment'}}};
+  try{
+    if('BarcodeDetector' in window){
+      const det=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
+      stream=await navigator.mediaDevices.getUserMedia(cons);video.srcObject=stream;await video.play();
+      timer=setInterval(async()=>{try{const r=await det.detect(video);if(r.length)onCode(r[0].rawValue)}catch(e){}},250);
+    }else if(window.ZXing){
+      reader=new ZXing.BrowserMultiFormatReader();
+      await reader.decodeFromConstraints(cons,video,(r)=>{if(r)onCode(r.getText())});
+    }else throw new Error('sin escáner');
+  }catch(e){boxEl.hidden=true;msgEl.className='msg bad';msgEl.textContent='No pude abrir la cámara. Revisá el permiso o cargá el código a mano.'}
+}
+function stop(){
+  clearInterval(timer);timer=null;
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  if(reader){try{reader.reset()}catch(e){}reader=null}
+  if(box)box.hidden=true;
+}
+$('scanBtn').onclick=()=>start($('vid'),$('cam'),add,$('scanMsg'));
+$('scanCode').onclick=()=>start($('vid2'),$('cam2'),c=>{$('pc').value=c;stop();$('pn').focus()},$('scanMsg'));
+
+// productos
+function drawP(){
+  const ids=Object.keys(prods);
+  $('plist').innerHTML=ids.length?ids.map(c=>`<div class="row"><div class="n"><b>${esc(prods[c].name)}</b><small>${esc(c)}</small></div><b>${money(prods[c].price)}</b><button class="x" data-d="${esc(c)}">×</button></div>`).join(''):'<div class="empty">Todavía no cargaste productos.</div>';
+}
+$('plist').onclick=e=>{const d=e.target.dataset.d;if(d){delete prods[d];delete cart[d];persist();drawP();drawCart()}};
+$('save').onclick=()=>{
+  const c=$('pc').value.trim(),n=$('pn').value.trim(),p=parseFloat($('pp').value.replace(',','.'));
+  if(!c||!n||isNaN(p))return;
+  prods[c]={name:n,price:p};persist();$('pc').value=$('pn').value=$('pp').value='';drawP();drawCart();
+};
+drawCart();
+</script></body></html>
