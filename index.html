@@ -14,6 +14,7 @@ nav button{flex:1;padding:11px;border:1px solid var(--line);background:none;colo
 nav button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
 input{width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:16px inherit;font-family:inherit;margin-bottom:8px}
+.pedit{flex-shrink:0}
 .btn{width:100%;padding:13px;border:0;border-radius:10px;background:var(--ok);color:#fff;font:800 16px inherit;font-family:inherit}
 .btn.alt{background:var(--ink);color:var(--bg)}
 .row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px dashed var(--line)}
@@ -58,6 +59,7 @@ video{width:100%;border-radius:10px;background:#000;max-height:240px;object-fit:
     <button class="btn alt" id="scanCode" style="margin-top:8px">Escanear código con la cámara</button>
     <div id="cam2" hidden style="margin-top:10px"><video id="vid2" playsinline muted></video></div>
   </div>
+  <div class="box"><input id="search" placeholder="Buscar producto por nombre o código" style="margin-bottom:0"></div>
   <div class="box" id="plist"></div>
 </section>
 
@@ -136,10 +138,22 @@ $('scanCode').onclick=()=>start($('vid2'),$('cam2'),c=>{$('pc').value=c;stop();$
 
 // productos
 function drawP(){
-  const ids=Object.keys(prods);
-  $('plist').innerHTML=ids.length?ids.map(c=>`<div class="row"><div class="n"><b>${esc(prods[c].name)}</b><small>${esc(c)}</small></div><b>${money(prods[c].price)}</b><button class="x" data-d="${esc(c)}">×</button></div>`).join(''):'<div class="empty">Todavía no cargaste productos.</div>';
+  const q=($('search').value||'').trim().toLowerCase();
+  let ids=Object.keys(prods);
+  if(q)ids=ids.filter(c=>prods[c].name.toLowerCase().includes(q)||c.includes(q));
+  if(!ids.length){$('plist').innerHTML=`<div class="empty">${Object.keys(prods).length?'No hay productos que coincidan.':'Todavía no cargaste productos.'}</div>`;return}
+  $('plist').innerHTML=ids.map(c=>`<div class="row"><div class="n"><b>${esc(prods[c].name)}</b><small>${esc(c)}</small></div>
+    <input class="pedit" data-e="${esc(c)}" inputmode="decimal" value="${prods[c].price}" style="width:80px;margin:0;padding:7px;text-align:right">
+    <button class="x" data-d="${esc(c)}">×</button></div>`).join('');
 }
+$('search').oninput=drawP;
 $('plist').onclick=e=>{const d=e.target.dataset.d;if(d){delete prods[d];delete cart[d];persist();drawP();drawCart()}};
+$('plist').addEventListener('change',e=>{
+  const c=e.target.dataset.e;if(!c)return;
+  const v=parseFloat((e.target.value||'').replace(',','.'));
+  if(isNaN(v)||v<0){e.target.value=prods[c].price;return}
+  prods[c].price=v;persist();drawCart();
+});
 $('save').onclick=()=>{
   const c=$('pc').value.trim(),n=$('pn').value.trim(),p=parseFloat($('pp').value.replace(',','.'));
   if(!c||!n||isNaN(p))return;
